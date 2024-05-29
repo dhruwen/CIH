@@ -7,9 +7,22 @@ from langchain.vectorstores import FAISS
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
+from google.protobuf.json_format import MessageToDict
+import time
+import jwt
+import datetime
+import models.Users as Users
+import database as db
+import os
 
 # In-memory user store
 users = {"jaya": "123"}  # This is just an example. Use a secure method for storing passwords in production.
+
+load_dotenv()
+password = os.getenv('PASSWORD')
+user_collection = os.getenv('USER_COLLECTION')
+CONNECTION_STRING = "mongodb+srv://teamCIA:"+password+"cia_team@dbcluster1.6mtlxyj.mongodb.net/?retryWrites=true&w=majority&appName=DbCluster1"
+secret_key = os.getenv('SECRET_KEY')
 
 # HTML and CSS templates
 css = """
@@ -67,6 +80,20 @@ bot_template = """
     {{MSG}}
 </div>
 """
+
+def generate_jwt(username, password):
+    payload = {
+        "user_id": password,
+        "username": username,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)  
+    }
+    __access_token = jwt.encode(payload, secret_key, algorithm="HS256")
+    token = Users.Token(
+        access_token=__access_token,
+        expiration_timestamp=int(time.time())
+    )
+    return token
+
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -126,18 +153,32 @@ def login():
 
 def signup():
     st.header("Signup")
-    username = st.text_input("Choose a Username")
-    password = st.text_input("Choose a Password", type="password")
+    client = db.mongoDb(CONNECTION_STRING)
+    firstname = st.text_input("Enter First Name")   
+    lastname = st.text_input("Enter Last Name")   
+    email = st.text_input("Enter a Email")   
+    mobileNumber = st.text_input("Enter a Mobile Number")   
+    designation = st.text_input("Enter a Your Designation")   
+    password = st.text_input("Enter a Password", type="password")
     if st.button("Signup"):
-        if username in users:
+        if email in users:
             st.error("Username already exists")
         else:
-            users[username] = password
+            user = Users.User(
+                firstname=firstname,
+                lastname=lastname,
+                email=email,
+                password=password,
+                mobilenumber=mobileNumber,
+                designation=designation,
+                token=generate_jwt(email,password)
+            )
+            users[email] = password
+            client.add_data_to_collection(user_collection,user.to_dict)
             st.success("Signup successful. Please log in.")
             st.session_state.signup_page = False
 
 def main():
-    load_dotenv()
     st.set_page_config(page_title="COPBOT App", page_icon=":books:")
 
     if "page" not in st.session_state:
@@ -214,4 +255,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
