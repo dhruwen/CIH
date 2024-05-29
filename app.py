@@ -14,9 +14,10 @@ import datetime
 import models.Users as Users
 import database as db
 import os
+import bcrypt
 
 # In-memory user store
-users = {"jaya": "123"}  # This is just an example. Use a secure method for storing passwords in production.
+# users = {"jaya": "123"}  # This is just an example. Use a secure method for storing passwords in production.
 
 load_dotenv()
 password = os.getenv('PASSWORD')
@@ -80,6 +81,26 @@ bot_template = """
     {{MSG}}
 </div>
 """
+def hash_password(password):
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    return hashed_password.decode('utf-8')
+
+def hash_password(password: str) -> bytes:
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(password_bytes, salt)
+    return hashed_password
+
+def verify_password(username: str, password: str) -> bool:
+    client = db.mongoDb(CONNECTION_STRING)
+    user = client.search_data(user_collection,{"Email": username})
+    if user is None:
+        return False
+    
+    stored_hashed_password = user['Password']
+    password_bytes = password.encode('utf-8')
+    
+    return bcrypt.checkpw(password_bytes, stored_hashed_password)
 
 def generate_jwt(username, password):
     payload = {
@@ -143,38 +164,40 @@ def login():
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
-        if username in users and users[username] == password:
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.success("Logged in successfully")
-            st.experimental_rerun()
-        else:
+
+        if verify_password(username, password) == False:
             st.error("Invalid username or password")
+        st.session_state.logged_in = True
+        st.session_state.username = username
+        st.success("Logged in successfully")
+        st.experimental_rerun()
+
 
 def signup():
     st.header("Signup")
     client = db.mongoDb(CONNECTION_STRING)
-    firstname = st.text_input("Enter First Name")   
-    lastname = st.text_input("Enter Last Name")   
-    email = st.text_input("Enter a Email")   
-    mobileNumber = st.text_input("Enter a Mobile Number")   
+    first_name = st.text_input("Enter First Name")   
+    last_name = st.text_input("Enter Last Name")   
+    email_address = st.text_input("Enter a Email")   
+    mobile_number = st.text_input("Enter a Mobile Number")   
     designation = st.text_input("Enter a Your Designation")   
     password = st.text_input("Enter a Password", type="password")
     if st.button("Signup"):
-        if email in users:
+        res = client.search_data(user_collection,{'Email':email_address})
+        if res != None:
             st.error("Username already exists")
         else:
             user = Users.User(
-                firstname=firstname,
-                lastname=lastname,
-                email=email,
-                password=password,
-                mobilenumber=mobileNumber,
+                firstname=first_name,
+                lastname=last_name,
+                email=email_address,
+                password=hash_password(password),
+                mobilenumber=mobile_number,
                 designation=designation,
-                token=generate_jwt(email,password)
+                token=generate_jwt(email_address,password)
             )
-            users[email] = password
-            client.add_data_to_collection(user_collection,user.to_dict)
+            id = client.add_data_to_collection(user_collection,user.to_dict())
+            client.update_document_with_id(user_collection,id, {'Id':id})
             st.success("Signup successful. Please log in.")
             st.session_state.signup_page = False
 

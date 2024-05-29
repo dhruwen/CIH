@@ -18,8 +18,6 @@ class mongoDb:
     def search_data(self, collection_name, search_param):
         collection = self.db[collection_name]
         result = collection.find_one(search_param)
-        if result:
-            result['_id'] = str(result['_id'])  
         return result
 
     def update_document_with_id(self, collection_name, document_id, update_param):
@@ -30,6 +28,4 @@ class mongoDb:
     def get_user_by_token(self, token):
         collection = self.db['Users']
         result = collection.find_one({'Token.AccessToken': token})
-        if result:
-            result['_id'] = str(result['_id'])  
         return result
